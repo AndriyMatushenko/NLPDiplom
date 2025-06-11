@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# IDE & Editor specific files
+.idea/
+.vscode/
+*.swp
+*~
+Scratches and Consoles/
+
+# Data files (генеровані скриптом)
+*.pkl
+documents.pkl
+
+# Gradio cache
+.gradio/
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
