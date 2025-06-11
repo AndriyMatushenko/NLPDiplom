@@ -6,11 +6,13 @@
 та використовує локальну LLM для надання відповідей на запити користувачів.
 """
 import logging
+import logging.handlers
 import os
 import pickle
 import re
 import ssl
-import uuid  # Додано для генерації унікальних ID помилок
+import threading
+import uuid
 
 import gradio as gr
 import nltk
@@ -23,13 +25,55 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 
 import ollama
 
-# --- Налаштування логування ---
-LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
-logging.basicConfig(
-    level=LOG_LEVEL,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+# --- Розширене налаштування логування (Виправлена версія) ---
+
+# Сховище для унікального ID кожного запиту, доступне в межах одного потоку
+local_storage = threading.local()
+
+class RequestIdFormatter(logging.Formatter):
+    """
+    Кастомний форматер, що додає унікальний ID запиту до кожного лог-запису.
+    Це вирішує проблему, коли сторонні бібліотеки логують повідомлення,
+    і стандартний фільтр не спрацьовує для них.
+    """
+    def format(self, record):
+        # Встановлюємо request_id для КОЖНОГО запису прямо перед форматуванням
+        record.request_id = getattr(local_storage, 'request_id', 'main-thread')
+        return super().format(record)
+
+def setup_logging():
+    """Налаштовує систему логування з двома обробниками та кастомним форматом."""
+    LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
+
+    # Отримуємо кореневий логер
+    root_logger = logging.getLogger()
+    root_logger.setLevel(LOG_LEVEL)
+
+    # Видаляємо всі існуючі обробники, щоб уникнути дублювання
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
+
+    # Створюємо наш кастомний форматер
+    formatter = RequestIdFormatter(
+        '%(asctime)s - %(request_id)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+
+    # 1. Обробник для виводу в консоль
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
+
+    # 2. Обробник для запису у файл з ротацією
+    file_handler = logging.handlers.RotatingFileHandler(
+        'app.log', maxBytes=5*1024*1024, backupCount=5, encoding='utf-8'
+    )
+    file_handler.setFormatter(formatter)
+    root_logger.addHandler(file_handler)
+
+# Запускаємо налаштування логування
+setup_logging()
+# Отримуємо логер для поточного модуля, він успадкує налаштування від кореневого
 logger = logging.getLogger(__name__)
 
 # --- Кінець налаштування логування ---
@@ -78,7 +122,6 @@ def scrape_legal_data():
             logger.info("Успішно завантажено та оброблено: %s", url)
         except requests.exceptions.RequestException as e:
             error_id = uuid.uuid4()
-            # Додано контекстну інформацію (url) та унікальний ID до логу
             logger.error(
                 "Помилка при зборі даних. ID помилки: %s. URL: %s. Деталі: %s",
                 error_id, url, e, exc_info=True
@@ -99,7 +142,6 @@ def download_nltk_resources():
 
 def split_chunks(documents):
     """Розбиває довгі тексти документів на менші сегменти (чанки)."""
-    # ... (код функції без змін)
     download_nltk_resources()
     chunks = []
     for doc in documents:
@@ -113,7 +155,6 @@ def split_chunks(documents):
 
 def lemmatize(text):
     """Проводить лематизацію тексту."""
-    # ... (код функції без змін)
     download_nltk_resources()
     words = nltk.word_tokenize(text.lower())
     return [MORPH.parse(w)[0].normal_form for w in words if w.isalpha()]
@@ -134,19 +175,16 @@ def process_data():
             f"Критична помилка: не вдалося зібрати документи. ID помилки: {error_id}"
         )
 
-    # ... (решта коду функції без змін)
     logger.info("Початок розбиття на сегменти...")
     chunks = split_chunks(docs)
     logger.info("Початок лематизації...")
     lemmatized_bm25 = [lemmatize(chunk['chunk_text']) for chunk in chunks]
-    lemmatized_tfidf = [' '.join(toks) for toks in lemmatized_bm25]
 
     logger.info("Збереження оброблених даних у файл %s...", DOCUMENTS_FILE)
     with open(DOCUMENTS_FILE, 'wb') as f:
         pickle.dump({
             'original_chunks': chunks,
-            'lemmatized_bm25': lemmatized_bm25,
-            'lemmatized_tfidf': lemmatized_tfidf,
+            'lemmatized_bm25': lemmatized_bm25
         }, f)
     logger.info("Дані успішно оброблено та збережено!")
 
@@ -171,18 +209,13 @@ class Search:
             with open(DOCUMENTS_FILE, 'rb') as f:
                 data = pickle.load(f)
 
-        # ... (решта коду __init__ без змін)
         self.original_chunks = data['original_chunks']
         self.lemmatized_bm25 = data['lemmatized_bm25']
-
         self.bm25 = BM25Okapi(self.lemmatized_bm25)
-        self.tfidf = TfidfVectorizer()
-        self.tfidf_matrix = self.tfidf.fit_transform(data['lemmatized_tfidf'])
         logger.info("Пошуковий рушій успішно ініціалізовано.")
 
     def query(self, text):
         """Виконує пошук найбільш релевантних чанків."""
-        # ... (код функції без змін)
         logger.debug("Виконання пошукового запиту: '%s'", text)
         lemmas = lemmatize(text)
         bm25_scores = self.bm25.get_scores(lemmas)
@@ -220,22 +253,24 @@ def generate_answer(context, query_text):
         return res['message']['content']
     except ollama.ResponseError as e:
         error_id = uuid.uuid4()
-        # Додано контекст (query_text) до логу
         logger.error(
             "Помилка API Ollama. ID: %s. Запит: '%s'. Деталі: %s",
             error_id, query_text, e.error
         )
-        # Створено інформативне повідомлення для користувача
-        return (f"Вибачте, сталася помилка під час звернення до мовної моделі. "
-                f"Будь ласка, спробуйте ще раз пізніше. ID помилки: {error_id}")
+        return (f"**Вибачте, сталася технічна помилка.**\n\n"
+                f"Не вдалося згенерувати відповідь через проблему з мовною моделлю. "
+                f"Будь ласка, спробуйте ще раз пізніше.\n\n"
+                f"*Якщо проблема повторюється, повідомте цей ID помилки підтримці: `{error_id}`*")
     except Exception as e:
         error_id = uuid.uuid4()
         logger.error(
             "Невідома помилка при генерації відповіді. ID: %s. Запит: '%s'.",
             error_id, query_text, exc_info=True
         )
-        return (f"Вибачте, сталася непередбачувана помилка. "
-                f"Ми вже працюємо над її вирішенням. ID помилки: {error_id}")
+        return (f"**Вибачте, сталася непередбачувана помилка.**\n\n"
+                f"Ми вже працюємо над її вирішенням. "
+                f"Будь ласка, спробуйте ще раз пізніше.\n\n"
+                f"*Якщо проблема повторюється, повідомте цей ID помилки підтримці: `{error_id}`*")
 
 
 def main():
@@ -251,9 +286,13 @@ def main():
 
         def main_interface(query_text):
             """Внутрішня функція-обгортка для інтерфейсу Gradio."""
+            # Встановлюємо унікальний ID для цього конкретного запиту
+            local_storage.request_id = f"req-{uuid.uuid4().hex[:8]}"
             logger.info("Отримано новий запит від користувача: '%s'", query_text)
             context = search_engine.query(query_text)
             answer = generate_answer(context, query_text)
+            # Очищуємо ID після завершення обробки
+            del local_storage.request_id
             return answer
 
         iface = gr.Interface(
@@ -277,7 +316,6 @@ def main():
             "Критична неперехоплена помилка під час запуску програми. ID: %s",
             error_id, exc_info=True
         )
-        # У реальному застосунку тут може бути сповіщення адміністратору
     finally:
         logger.info("Застосунок 'Юридичний асистент' завершив роботу.")
 

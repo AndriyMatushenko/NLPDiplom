@@ -1,0 +1,22 @@
+2025-06-11 17:20:31 - main-thread - root - INFO - Запуск застосунку 'Юридичний асистент'.
+2025-06-11 17:20:31 - main-thread - root - INFO - Ініціалізація пошукового рушія...
+2025-06-11 17:20:31 - main-thread - root - INFO - Дані успішно завантажено з documents.pkl.
+2025-06-11 17:20:31 - main-thread - root - INFO - Пошуковий рушій успішно ініціалізовано.
+2025-06-11 17:20:32 - main-thread - root - INFO - Запуск веб-інтерфейсу Gradio...
+2025-06-11 17:22:14 - main-thread - root - INFO - Застосунок 'Юридичний асистент' завершив роботу.
+2025-06-11 17:22:17 - main-thread - root - INFO - Запуск застосунку 'Юридичний асистент'.
+2025-06-11 17:22:17 - main-thread - root - INFO - Ініціалізація пошукового рушія...
+2025-06-11 17:22:17 - main-thread - root - INFO - Дані успішно завантажено з documents.pkl.
+2025-06-11 17:22:17 - main-thread - root - INFO - Пошуковий рушій успішно ініціалізовано.
+2025-06-11 17:22:17 - main-thread - root - INFO - Запуск веб-інтерфейсу Gradio...
+2025-06-11 17:24:20 - main-thread - root - INFO - Застосунок 'Юридичний асистент' завершив роботу.
+2025-06-11 17:24:24 - main-thread - pymorphy3.opencorpora_dict.wrapper - INFO - Loading dictionaries from E:\Users\Егор\PycharmProjects\andrewtest1\.venv\lib\site-packages\pymorphy3_dicts_ru\data
+2025-06-11 17:24:24 - main-thread - pymorphy3.opencorpora_dict.wrapper - INFO - format: 2.4, revision: 417150, updated: 2022-01-08T22:09:24.565962
+2025-06-11 17:24:24 - main-thread - __main__ - INFO - Запуск застосунку 'Юридичний асистент'.
+2025-06-11 17:24:24 - main-thread - __main__ - INFO - Ініціалізація пошукового рушія...
+2025-06-11 17:24:24 - main-thread - __main__ - INFO - Дані успішно завантажено з documents.pkl.
+2025-06-11 17:24:24 - main-thread - __main__ - INFO - Пошуковий рушій успішно ініціалізовано.
+2025-06-11 17:24:24 - main-thread - __main__ - INFO - Запуск веб-інтерфейсу Gradio...
+2025-06-11 17:24:24 - main-thread - httpx - INFO - HTTP Request: GET http://127.0.0.1:7860/gradio_api/startup-events "HTTP/1.1 200 OK"
+2025-06-11 17:24:24 - main-thread - httpx - INFO - HTTP Request: HEAD http://127.0.0.1:7860/ "HTTP/1.1 200 OK"
+2025-06-11 17:24:26 - main-thread - httpx - INFO - HTTP Request: GET https://api.gradio.app/pkg-version "HTTP/1.1 200 OK"
