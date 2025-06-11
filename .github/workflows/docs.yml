@@ -1,0 +1,55 @@
+# .github/workflows/docs.yml
+name: Deploy Documentation
+
+# Запускати цей процес при кожному push у гілку 'main'
+on:
+  push:
+    branches:
+      - master
+
+# Дозволи для робочого процесу
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      # Крок 1: Отримуємо код з репозиторію
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Крок 2: Налаштовуємо Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      # Крок 3: Встановлюємо залежності для документації
+      - name: Install dependencies
+        run: pip install -r requirements-docs.txt
+
+      # Крок 4: Генеруємо HTML-сайт за допомогою Sphinx
+      - name: Build Sphinx documentation
+        run: sphinx-build -b html docs/source docs/build/html
+
+      # Крок 5: Готуємо артефакт для завантаження на GitHub Pages
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      # Крок 6: Завантажуємо згенерований сайт
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './docs/build/html'
+
+      # Крок 7: Розгортаємо сайт
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
