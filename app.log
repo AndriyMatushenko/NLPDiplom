@@ -20,3 +20,26 @@
 2025-06-11 17:24:24 - main-thread - httpx - INFO - HTTP Request: GET http://127.0.0.1:7860/gradio_api/startup-events "HTTP/1.1 200 OK"
 2025-06-11 17:24:24 - main-thread - httpx - INFO - HTTP Request: HEAD http://127.0.0.1:7860/ "HTTP/1.1 200 OK"
 2025-06-11 17:24:26 - main-thread - httpx - INFO - HTTP Request: GET https://api.gradio.app/pkg-version "HTTP/1.1 200 OK"
+2025-06-11 17:43:58 - main-thread - __main__ - INFO - Застосунок 'Юридичний асистент' завершив роботу.
+2025-06-11 17:45:03 - main-thread - pymorphy3.opencorpora_dict.wrapper - INFO - Loading dictionaries from E:\Users\Егор\PycharmProjects\andrewtest1\.venv\lib\site-packages\pymorphy3_dicts_ru\data
+2025-06-11 17:45:03 - main-thread - pymorphy3.opencorpora_dict.wrapper - INFO - format: 2.4, revision: 417150, updated: 2022-01-08T22:09:24.565962
+2025-06-11 17:45:03 - main-thread - __main__ - INFO - Запуск застосунку 'Юридичний асистент'.
+2025-06-11 17:45:03 - main-thread - __main__ - INFO - Ініціалізація пошукового рушія...
+2025-06-11 17:45:03 - main-thread - __main__ - INFO - Дані успішно завантажено з documents.pkl.
+2025-06-11 17:45:03 - main-thread - __main__ - INFO - Пошуковий рушій успішно ініціалізовано.
+2025-06-11 17:45:03 - main-thread - __main__ - INFO - Запуск веб-інтерфейсу Gradio...
+2025-06-11 17:45:03 - main-thread - httpx - INFO - HTTP Request: GET http://127.0.0.1:7860/gradio_api/startup-events "HTTP/1.1 200 OK"
+2025-06-11 17:45:03 - main-thread - httpx - INFO - HTTP Request: HEAD http://127.0.0.1:7860/ "HTTP/1.1 200 OK"
+2025-06-11 17:45:04 - main-thread - httpx - INFO - HTTP Request: GET https://api.gradio.app/pkg-version "HTTP/1.1 200 OK"
+2025-06-11 17:46:06 - req-ce39df04 - __main__ - INFO - Отримано новий запит від користувача: ''
+2025-06-11 17:46:08 - req-ce39df04 - __main__ - ERROR - Невідома помилка при генерації відповіді. ID: 0ce8de60-2c0d-4559-94c5-9d60ff9cd944. Запит: ''.
+Traceback (most recent call last):
+  File "E:\Users\Егор\PycharmProjects\andrewtest1\app.py", line 258, in generate_answer
+    res = ollama.chat(
+  File "E:\Users\Егор\PycharmProjects\andrewtest1\.venv\lib\site-packages\ollama\_client.py", line 342, in chat
+    return self._request(
+  File "E:\Users\Егор\PycharmProjects\andrewtest1\.venv\lib\site-packages\ollama\_client.py", line 180, in _request
+    return cls(**self._request_raw(*args, **kwargs).json())
+  File "E:\Users\Егор\PycharmProjects\andrewtest1\.venv\lib\site-packages\ollama\_client.py", line 126, in _request_raw
+    raise ConnectionError(CONNECTION_ERROR_MESSAGE) from None
+ConnectionError: Failed to connect to Ollama. Please check that Ollama is downloaded, running and accessible. https://ollama.com/download

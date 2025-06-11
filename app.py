@@ -19,64 +19,67 @@ import nltk
 import numpy as np
 import pymorphy3
 import requests
+import sentry_sdk  # Додано Sentry SDK
 from bs4 import BeautifulSoup
 from rank_bm25 import BM25Okapi
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 import ollama
 
-# --- Розширене налаштування логування (Виправлена версія) ---
+# --- Ініціалізація Sentry ---
+SENTRY_DSN = os.getenv('SENTRY_DSN')
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        # Вмикає збір додаткової інформації про продуктивність
+        traces_sample_rate=1.0,
+        profiles_sample_rate=1.0,
+    )
+    print("Sentry SDK ініціалізовано.")
+else:
+    print("SENTRY_DSN не знайдено. Sentry не буде використовуватись.")
 
-# Сховище для унікального ID кожного запиту, доступне в межах одного потоку
+# --- Розширене налаштування логування ---
 local_storage = threading.local()
 
+
 class RequestIdFormatter(logging.Formatter):
-    """
-    Кастомний форматер, що додає унікальний ID запиту до кожного лог-запису.
-    Це вирішує проблему, коли сторонні бібліотеки логують повідомлення,
-    і стандартний фільтр не спрацьовує для них.
-    """
+    """Кастомний форматер, що додає унікальний ID запиту до кожного лог-запису."""
+
     def format(self, record):
-        # Встановлюємо request_id для КОЖНОГО запису прямо перед форматуванням
         record.request_id = getattr(local_storage, 'request_id', 'main-thread')
         return super().format(record)
+
 
 def setup_logging():
     """Налаштовує систему логування з двома обробниками та кастомним форматом."""
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
-
-    # Отримуємо кореневий логер
     root_logger = logging.getLogger()
     root_logger.setLevel(LOG_LEVEL)
 
-    # Видаляємо всі існуючі обробники, щоб уникнути дублювання
     if root_logger.hasHandlers():
         root_logger.handlers.clear()
 
-    # Створюємо наш кастомний форматер
     formatter = RequestIdFormatter(
         '%(asctime)s - %(request_id)s - %(name)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-    # 1. Обробник для виводу в консоль
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
 
-    # 2. Обробник для запису у файл з ротацією
     file_handler = logging.handlers.RotatingFileHandler(
-        'app.log', maxBytes=5*1024*1024, backupCount=5, encoding='utf-8'
+        'app.log', maxBytes=5 * 1024 * 1024, backupCount=5, encoding='utf-8'
     )
     file_handler.setFormatter(formatter)
     root_logger.addHandler(file_handler)
 
-# Запускаємо налаштування логування
+
 setup_logging()
-# Отримуємо логер для поточного модуля, він успадкує налаштування від кореневого
 logger = logging.getLogger(__name__)
 
-# --- Кінець налаштування логування ---
+# --- Кінець налаштування ---
 
 
 # Налаштування SSL для NLTK
@@ -123,9 +126,10 @@ def scrape_legal_data():
         except requests.exceptions.RequestException as e:
             error_id = uuid.uuid4()
             logger.error(
-                "Помилка при зборі даних. ID помилки: %s. URL: %s. Деталі: %s",
-                error_id, url, e, exc_info=True
+                "Помилка при зборі даних. ID помилки: %s. URL: %s.",
+                error_id, url, exc_info=True
             )
+            sentry_sdk.capture_exception(e)  # Відправляємо помилку в Sentry
     logger.info("Збір даних завершено. Отримано %d документів.", len(documents))
     return documents
 
@@ -179,12 +183,14 @@ def process_data():
     chunks = split_chunks(docs)
     logger.info("Початок лематизації...")
     lemmatized_bm25 = [lemmatize(chunk['chunk_text']) for chunk in chunks]
+    lemmatized_tfidf = [' '.join(toks) for toks in lemmatized_bm25]
 
     logger.info("Збереження оброблених даних у файл %s...", DOCUMENTS_FILE)
     with open(DOCUMENTS_FILE, 'wb') as f:
         pickle.dump({
             'original_chunks': chunks,
-            'lemmatized_bm25': lemmatized_bm25
+            'lemmatized_bm25': lemmatized_bm25,
+            'lemmatized_tfidf': lemmatized_tfidf,
         }, f)
     logger.info("Дані успішно оброблено та збережено!")
 
@@ -192,6 +198,7 @@ def process_data():
 # pylint: disable=too-few-public-methods
 class Search:
     """Клас для індексації даних та виконання пошуку."""
+
     def __init__(self):
         """Ініціалізує пошуковий рушій."""
         logger.info("Ініціалізація пошукового рушія...")
@@ -211,7 +218,10 @@ class Search:
 
         self.original_chunks = data['original_chunks']
         self.lemmatized_bm25 = data['lemmatized_bm25']
+
         self.bm25 = BM25Okapi(self.lemmatized_bm25)
+        self.tfidf = TfidfVectorizer()
+        self.tfidf_matrix = self.tfidf.fit_transform(data['lemmatized_tfidf'])
         logger.info("Пошуковий рушій успішно ініціалізовано.")
 
     def query(self, text):
@@ -251,26 +261,22 @@ def generate_answer(context, query_text):
         )
         logger.info("Відповідь успішно згенеровано.")
         return res['message']['content']
-    except ollama.ResponseError as e:
-        error_id = uuid.uuid4()
-        logger.error(
-            "Помилка API Ollama. ID: %s. Запит: '%s'. Деталі: %s",
-            error_id, query_text, e.error
-        )
-        return (f"**Вибачте, сталася технічна помилка.**\n\n"
-                f"Не вдалося згенерувати відповідь через проблему з мовною моделлю. "
-                f"Будь ласка, спробуйте ще раз пізніше.\n\n"
-                f"*Якщо проблема повторюється, повідомте цей ID помилки підтримці: `{error_id}`*")
     except Exception as e:
         error_id = uuid.uuid4()
+        # Встановлюємо контекст для звіту Sentry
+        with sentry_sdk.push_scope() as scope:
+            scope.set_tag("request_id", getattr(local_storage, 'request_id', 'N/A'))
+            scope.set_extra("query_text", query_text)
+            sentry_sdk.capture_exception(e)
+
         logger.error(
             "Невідома помилка при генерації відповіді. ID: %s. Запит: '%s'.",
             error_id, query_text, exc_info=True
         )
         return (f"**Вибачте, сталася непередбачувана помилка.**\n\n"
-                f"Ми вже працюємо над її вирішенням. "
+                f"Наша команда вже отримала сповіщення та працює над її вирішенням. "
                 f"Будь ласка, спробуйте ще раз пізніше.\n\n"
-                f"*Якщо проблема повторюється, повідомте цей ID помилки підтримці: `{error_id}`*")
+                f"*Для звернення до підтримки, ви можете вказати ID помилки: `{error_id}`*")
 
 
 def main():
@@ -286,13 +292,20 @@ def main():
 
         def main_interface(query_text):
             """Внутрішня функція-обгортка для інтерфейсу Gradio."""
-            # Встановлюємо унікальний ID для цього конкретного запиту
-            local_storage.request_id = f"req-{uuid.uuid4().hex[:8]}"
+            request_id = f"req-{uuid.uuid4().hex[:8]}"
+            local_storage.request_id = request_id
+
+            # Встановлюємо тег request_id для всіх подій Sentry у цьому запиті
+            sentry_sdk.set_tag("request_id", request_id)
+
             logger.info("Отримано новий запит від користувача: '%s'", query_text)
             context = search_engine.query(query_text)
             answer = generate_answer(context, query_text)
-            # Очищуємо ID після завершення обробки
-            del local_storage.request_id
+
+            # Очищуємо сховище та теги після завершення запиту
+            if hasattr(local_storage, 'request_id'):
+                del local_storage.request_id
+            sentry_sdk.set_tag("request_id", None)
             return answer
 
         iface = gr.Interface(
@@ -316,6 +329,7 @@ def main():
             "Критична неперехоплена помилка під час запуску програми. ID: %s",
             error_id, exc_info=True
         )
+        sentry_sdk.capture_exception(e)  # Відправляємо критичну помилку в Sentry
     finally:
         logger.info("Застосунок 'Юридичний асистент' завершив роботу.")
 
