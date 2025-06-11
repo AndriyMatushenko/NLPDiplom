@@ -1,18 +1,26 @@
 # -*- coding: utf-8 -*-
+"""
+Юридичний асистент на основі RAG.
+
+Цей застосунок збирає юридичні дані з українських сайтів, обробляє їх
+та використовує локальну LLM для надання відповідей на запити користувачів.
+"""
 import os
+import pickle
 import re
 import ssl
-import sys
-import nltk
-import pickle
-import requests
-import pymorphy3
-import numpy as np
-import gradio as gr
+# import sys - видалено невикористаний імпорт (W0611)
 
+# Імпорти впорядковано за стандартом (C0411)
+import nltk
+import numpy as np
+import pymorphy3
+import requests
 from bs4 import BeautifulSoup
-from sklearn.feature_extraction.text import TfidfVectorizer
 from rank_bm25 import BM25Okapi
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+import gradio as gr
 import ollama
 
 # Налаштування SSL для NLTK
@@ -41,6 +49,9 @@ morph = pymorphy3.MorphAnalyzer()
 
 # Завантаження юридичних документів
 def scrape_legal_data():
+    """
+    Завантажує тексти юридичних документів із визначених у SEARCH_SOURCES джерел.
+    """
     documents = []
     for url in SEARCH_SOURCES:
         try:
@@ -175,13 +186,13 @@ if __name__ == '__main__':
         return answer
 
 
-iface = gr.Interface(
-    fn=main_interface,
-    inputs=gr.Textbox(lines=4, placeholder="Наприклад: 'Які права має споживач при поверненні товару?'", label="Ваш запит"),
-    outputs=gr.Markdown(label="Відповідь юридичного асистента"),
-    title="⚖️ Юридичний асистент",
-    description="Інформаційна система автоматизованого збору україномовних юридичних даних. Введіть запит для отримання юридичної відповіді на основі законів України."
-)
+    iface = gr.Interface(
+        fn=main_interface,
+        inputs=gr.Textbox(lines=4, placeholder="Наприклад: 'Які права має споживач при поверненні товару?'", label="Ваш запит"),
+        outputs=gr.Markdown(label="Відповідь юридичного асистента"),
+        title="⚖️ Юридичний асистент",
+        description="Інформаційна система автоматизованого збору україномовних юридичних даних. Введіть запит для отримання юридичної відповіді на основі законів України."
+    )
 
-print("\n▶ Запуск веб-інтерфейсу... Відкрийте посилання у браузері.")
-iface.launch()
+    print("\n▶ Запуск веб-інтерфейсу... Відкрийте посилання у браузері.")
+    iface.launch()
