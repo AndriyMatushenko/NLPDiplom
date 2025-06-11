@@ -10,6 +10,7 @@ import os
 import pickle
 import re
 import ssl
+import uuid  # Додано для генерації унікальних ID помилок
 
 import gradio as gr
 import nltk
@@ -22,16 +23,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 
 import ollama
 
-# --- Налаштування логування (Етап 60% та 65%) ---
-
-# Визначення рівня логування через змінну середовища.
-# Якщо змінна LOG_LEVEL не встановлена, за замовчуванням використовується 'INFO'.
-# Приклад запуску з рівнем DEBUG:
-# (Linux/macOS) export LOG_LEVEL=DEBUG && python app.py
-# (Windows PowerShell) $env:LOG_LEVEL="DEBUG"; python app.py
+# --- Налаштування логування ---
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
-
-# Налаштування базової конфігурації логера
 logging.basicConfig(
     level=LOG_LEVEL,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -84,8 +77,12 @@ def scrape_legal_data():
             documents.append({'source': url, 'text': content})
             logger.info("Успішно завантажено та оброблено: %s", url)
         except requests.exceptions.RequestException as e:
-            # Логування помилки, але програма продовжує роботу
-            logger.error("Помилка при зборі даних з %s: %s", url, e)
+            error_id = uuid.uuid4()
+            # Додано контекстну інформацію (url) та унікальний ID до логу
+            logger.error(
+                "Помилка при зборі даних. ID помилки: %s. URL: %s. Деталі: %s",
+                error_id, url, e, exc_info=True
+            )
     logger.info("Збір даних завершено. Отримано %d документів.", len(documents))
     return documents
 
@@ -102,6 +99,7 @@ def download_nltk_resources():
 
 def split_chunks(documents):
     """Розбиває довгі тексти документів на менші сегменти (чанки)."""
+    # ... (код функції без змін)
     download_nltk_resources()
     chunks = []
     for doc in documents:
@@ -115,6 +113,7 @@ def split_chunks(documents):
 
 def lemmatize(text):
     """Проводить лематизацію тексту."""
+    # ... (код функції без змін)
     download_nltk_resources()
     words = nltk.word_tokenize(text.lower())
     return [MORPH.parse(w)[0].normal_form for w in words if w.isalpha()]
@@ -126,12 +125,16 @@ def process_data():
     docs = scrape_legal_data()
 
     if not docs:
-        # Логуємо критичну помилку та підіймаємо виключення
-        logger.critical("Не вдалося зібрати жодного документа. Робота програми неможлива.")
+        error_id = uuid.uuid4()
+        logger.critical(
+            "Не вдалося зібрати жодного документа. Робота програми неможлива. ID помилки: %s",
+            error_id
+        )
         raise RuntimeError(
-            "Не вдалося зібрати документи. Перевірте підключення до мережі."
+            f"Критична помилка: не вдалося зібрати документи. ID помилки: {error_id}"
         )
 
+    # ... (решта коду функції без змін)
     logger.info("Початок розбиття на сегменти...")
     chunks = split_chunks(docs)
     logger.info("Початок лематизації...")
@@ -159,11 +162,16 @@ class Search:
                 data = pickle.load(f)
             logger.info("Дані успішно завантажено з %s.", DOCUMENTS_FILE)
         except (FileNotFoundError, pickle.PickleError, EOFError) as e:
-            logger.warning("Не вдалося прочитати файл %s: %s.", DOCUMENTS_FILE, e)
+            error_id = uuid.uuid4()
+            logger.warning(
+                "Не вдалося прочитати файл %s. ID помилки: %s. Деталі: %s. Запускаю повторну обробку.",
+                DOCUMENTS_FILE, error_id, e
+            )
             process_data()
             with open(DOCUMENTS_FILE, 'rb') as f:
                 data = pickle.load(f)
 
+        # ... (решта коду __init__ без змін)
         self.original_chunks = data['original_chunks']
         self.lemmatized_bm25 = data['lemmatized_bm25']
 
@@ -174,6 +182,7 @@ class Search:
 
     def query(self, text):
         """Виконує пошук найбільш релевантних чанків."""
+        # ... (код функції без змін)
         logger.debug("Виконання пошукового запиту: '%s'", text)
         lemmas = lemmatize(text)
         bm25_scores = self.bm25.get_scores(lemmas)
@@ -210,11 +219,23 @@ def generate_answer(context, query_text):
         logger.info("Відповідь успішно згенеровано.")
         return res['message']['content']
     except ollama.ResponseError as e:
-        logger.error("Помилка API Ollama під час генерації відповіді: %s", e.error)
-        return f"❌ Помилка API Ollama: {e.error}"
+        error_id = uuid.uuid4()
+        # Додано контекст (query_text) до логу
+        logger.error(
+            "Помилка API Ollama. ID: %s. Запит: '%s'. Деталі: %s",
+            error_id, query_text, e.error
+        )
+        # Створено інформативне повідомлення для користувача
+        return (f"Вибачте, сталася помилка під час звернення до мовної моделі. "
+                f"Будь ласка, спробуйте ще раз пізніше. ID помилки: {error_id}")
     except Exception as e:
-        logger.error("Невідома помилка при генерації відповіді: %s", e, exc_info=True)
-        return f"❌ Невідома помилка при генерації відповіді: {e}"
+        error_id = uuid.uuid4()
+        logger.error(
+            "Невідома помилка при генерації відповіді. ID: %s. Запит: '%s'.",
+            error_id, query_text, exc_info=True
+        )
+        return (f"Вибачте, сталася непередбачувана помилка. "
+                f"Ми вже працюємо над її вирішенням. ID помилки: {error_id}")
 
 
 def main():
@@ -230,7 +251,7 @@ def main():
 
         def main_interface(query_text):
             """Внутрішня функція-обгортка для інтерфейсу Gradio."""
-            logger.info("Отримано новий запит від користувача.")
+            logger.info("Отримано новий запит від користувача: '%s'", query_text)
             context = search_engine.query(query_text)
             answer = generate_answer(context, query_text)
             return answer
@@ -249,11 +270,17 @@ def main():
 
         logger.info("Запуск веб-інтерфейсу Gradio...")
         iface.launch()
-        logger.info("Застосунок 'Юридичний асистент' завершив роботу.")
 
     except Exception as e:
-        logger.critical("Критична помилка під час запуску програми: %s", e, exc_info=True)
+        error_id = uuid.uuid4()
+        logger.critical(
+            "Критична неперехоплена помилка під час запуску програми. ID: %s",
+            error_id, exc_info=True
+        )
         # У реальному застосунку тут може бути сповіщення адміністратору
+    finally:
+        logger.info("Застосунок 'Юридичний асистент' завершив роботу.")
+
 
 if __name__ == '__main__':
     main()
